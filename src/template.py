@@ -9,6 +9,14 @@ import argparse
 import logging
 import json
 import shapely
+import math
+
+
+def clean(value):
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    return value
+
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
@@ -69,12 +77,12 @@ def row_to_jsonld(row: dict) -> dict:
         "schema:identifier": {
             "@type": "PropertyValue",
             "propertyID": "USGS site identifier",
-            "value": row.get("monitoring_location_number"),
+            "value": clean(row.get("monitoring_location_number")),
         },
         "schema:url": f"https://api.waterdata.usgs.gov/ogcapi/v0/collections/monitoring-locations/items/{id}",
         "schema:provider": {
             "@type": "GovernmentOrganization",
-            "name": row.get("agency_name"),
+            "name": clean(row.get("agency_name")),
         },
         "schema:geo": {
             "@type": "GeoCoordinates",
@@ -107,7 +115,7 @@ def row_to_jsonld(row: dict) -> dict:
             "schema:description": f"{parameter} at {row['monitoring_location_name']}",
             "schema:provider": {
                 "@type": "GovernmentOrganization",
-                "name": row.get("agency_name"),
+                "name": clean(row.get("agency_name")),
                 "url": "https://www.usgs.gov/",
             },
             "schema:url": f"https://api.waterdata.usgs.gov/ogcapi/v0/collections/time-series-metadata/items/{ts['id']}",
@@ -120,7 +128,7 @@ def row_to_jsonld(row: dict) -> dict:
                 "schema:measurementTechnique": "observation",
                 "schema:measurementMethod": {
                     "schema:name": f"{parameter} Measurements",
-                    "schema:publisher": row.get("agency_name"),
+                    "schema:publisher": clean(row.get("agency_name")),
                 },
             },
         }
@@ -170,7 +178,10 @@ def main(file_location):
 
         for _, row in df.iterrows():
             jsonld = row_to_jsonld(row.to_dict())
-            jsonld_records.append(json.dumps(jsonld))
+            try:
+                jsonld_records.append(json.dumps(jsonld, allow_nan=False))
+            except ValueError as e:
+                raise ValueError(f"Failed to serialize jsonld {jsonld}") from e
 
         print("\n".join(jsonld_records))
 
