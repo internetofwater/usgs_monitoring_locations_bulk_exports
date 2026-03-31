@@ -21,7 +21,7 @@ MONITORING_LOCATION_FIELDS_TO_TYPE: dict[str, pa.DataType] = {
     "hydrologic_unit_code": pa.string(),
     "basin_code": pa.string(),
     "altitude": pa.float64(),
-    """Comment out some fields because they add extra columns but are not useful for our purposes"""
+    # Commented out some fields because they add extra columns but are not useful for our purposes
     # "altitude_accuracy": pa.string(),
     # "altitude_method_code": pa.string(),
     # "altitude_method_name": pa.string(),

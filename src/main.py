@@ -1,4 +1,5 @@
 import asyncio
+import os
 from typing import Any, Dict, Tuple, cast
 
 import aiohttp
@@ -150,7 +151,11 @@ async def main():
         timeseries_schema(),
     )
 
-    async with aiohttp.ClientSession() as session:
+    USGS_API_KEY = os.environ.get("USGS_API_KEY")
+    if not USGS_API_KEY:
+        print("WARNING: USGS_API_KEY not set in .env")
+
+    async with aiohttp.ClientSession(headers={"X-Api-Key": USGS_API_KEY or ""}) as session:
         producers = [
             asyncio.create_task(fetch_monitoring_locations(session, queue)),
             asyncio.create_task(fetch_timeseries(session, queue)),
