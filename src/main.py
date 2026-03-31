@@ -8,6 +8,7 @@ from typing import Any, Dict, Tuple, cast
 import aiohttp
 import shapely
 import duckdb
+import geoparquet_io as gpio
 
 from lib import (
     GeojsonFeature,
@@ -144,23 +145,26 @@ async def fetch_timeseries(session, queue):
 
 
 def join_and_write_parquet(
-    ml_parquet_path: str,
-    ts_parquet_path: str,
+    monitoring_locations_path: str,
+    timeseries_metadata_path: str,
     output_parquet_path: str,
 ):
-    con = duckdb.connect()
     print(
-        f"Joining parquet files {ml_parquet_path} and {ts_parquet_path} to {output_parquet_path}"
+        f"Joining locations and time series metadata and writing to {output_parquet_path}"
     )
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
     query = f"""
         COPY (
             WITH ml AS (
                 SELECT *
-                FROM read_parquet('{ml_parquet_path}')
+                FROM read_parquet('{monitoring_locations_path}')
+                WHERE geometry IS NOT NULL
+                AND NOT ST_IsEmpty(geometry)
             ),
             ts AS (
                 SELECT *
-                FROM read_parquet('{ts_parquet_path}')
+                FROM read_parquet('{timeseries_metadata_path}')
             )
 
             SELECT
@@ -231,11 +235,18 @@ async def main():
         await queue.put(None)
         await consumer
 
+    output_parquet_path = "monitoring_locations_with_time_series_metadata.parquet"
     join_and_write_parquet(
         "monitoring_locations.parquet",
         "time_series_metadata.parquet",
-        "joined.parquet",
+        output_parquet_path,
     )
+    print("Adding geoparquet metadata and sorting by hilbert curve")
+    # add best practice metadata
+    gpio.read(output_parquet_path).add_bbox().sort_hilbert().add_bbox_metadata().write(
+        output_parquet_path, overwrite=True
+    )
+    print("Done")
 
 
 if __name__ == "__main__":
