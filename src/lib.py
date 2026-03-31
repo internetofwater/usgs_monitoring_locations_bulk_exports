@@ -78,6 +78,7 @@ for key in MONITORING_LOCATION_FIELDS_TO_TYPE:
 
 class TimeSeriesMetadataProperties(TypedDict):
     id: str
+    monitoring_location_id: str
     unit_of_measure: str
     parameter_name: str
     parameter_code: str

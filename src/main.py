@@ -71,6 +71,7 @@ def timeseries_metadata_to_row(feature: Dict[str, Any]) -> dict[str, str]:
     props: TimeSeriesMetadataProperties = feature["properties"]
     return {
         "id": feature["id"],
+        "monitoring_location_id": props["monitoring_location_id"],
         "unit_of_measure": props["unit_of_measure"],
         "parameter_name": props["parameter_name"],
         "parameter_code": props["parameter_code"],
