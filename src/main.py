@@ -1,160 +1,171 @@
 import asyncio
-import os
+from typing import Any, Dict, Tuple, cast
+
 import aiohttp
-import duckdb
+import shapely
 
-from monitoring_locations import fetch_all_monitoring_locations, make_monitoring_locations_table
-from timeseries_metadata import fetch_all_timeseries_metadata, make_timeseries_metadata_table
+from lib import (
+    GeojsonFeature,
+    MonitoringLocationProperties,
+    ParquetFeatureWriter,
+    TimeSeriesMetadataProperties,
+    fetch_all_pages_of_oaf_endpoint,
+)
+from schemas import monitoring_locations_schema, timeseries_schema
+from shapely.geometry import shape
+from dotenv import load_dotenv
 
-import json
-import asyncio
-import duckdb
+
+def monitoring_location_to_row(
+    feature: GeojsonFeature,
+) -> dict[str, str | float | bytes | None]:
+    props = cast(MonitoringLocationProperties, feature["properties"])
+    geometry = feature.get("geometry")
+    if geometry:
+        geometry = shape(geometry).wkb
+    else:
+        geometry = shapely.from_wkt("POINT EMPTY").wkb
+
+    return {
+        "id": props["id"],
+        "agency_code": props["agency_code"],
+        "agency_name": props["agency_name"],
+        "monitoring_location_number": props["monitoring_location_number"],
+        "monitoring_location_name": props["monitoring_location_name"],
+        "district_code": props["district_code"],
+        "country_code": props["country_code"],
+        "country_name": props["country_name"],
+        "state_code": props["state_code"],
+        "state_name": props["state_name"],
+        "county_code": props["county_code"],
+        "county_name": props["county_name"],
+        "minor_civil_division_code": props["minor_civil_division_code"],
+        "site_type_code": props["site_type_code"],
+        "site_type": props["site_type"],
+        "hydrologic_unit_code": props["hydrologic_unit_code"],
+        "basin_code": props["basin_code"],
+        "altitude": props["altitude"],
+        "drainage_area": props["drainage_area"],
+        "contributing_drainage_area": props["contributing_drainage_area"],
+        "time_zone_abbreviation": props["time_zone_abbreviation"],
+        "uses_daylight_savings": props["uses_daylight_savings"],
+        "contruction_date": props["construction_date"],
+        "aquifer_code": props["aquifer_code"],
+        "national_aquifer_code": props["national_aquifer_code"],
+        "aquifer_type_code": props["aquifer_type_code"],
+        "well_constructed_depth": props["well_constructed_depth"],
+        "hole_constructed_depth": props["hole_constructed_depth"],
+        "depth_source_code": props["depth_source_code"],
+        "revision_note": props["revision_note"],
+        "revision_created": props["revision_created"],
+        "revision_modified": props["revision_modified"],
+        "geometry": geometry,
+    }
 
 
-async def writer(conn: duckdb.DuckDBPyConnection, queue: asyncio.Queue):
+def timeseries_metadata_to_row(feature: Dict[str, Any]) -> dict[str, str]:
+    props: TimeSeriesMetadataProperties = feature["properties"]
+    return {
+        "id": feature["id"],
+        "unit_of_measure": props["unit_of_measure"],
+        "parameter_name": props["parameter_name"],
+        "parameter_code": props["parameter_code"],
+        "statistic_id": props["statistic_id"],
+        "hydrologic_unit_code": props["hydrologic_unit_code"],
+        "state_name": props["state_name"],
+        "last_modified": props["last_modified"],
+        "begin": props["begin"],
+        "end": props["end"],
+        "begin_utc": props["begin_utc"],
+        "end_utc": props["end_utc"],
+    }
+
+
+async def parquet_writer_worker(
+    queue: asyncio.Queue,
+    ml_writer: ParquetFeatureWriter,
+    ts_writer: ParquetFeatureWriter,
+):
+    BATCH_SIZE = 5000
+    buffer_ml: list[dict] = []
+    buffer_ts: list[dict] = []
+
     while True:
-        batch = await queue.get()
-        if batch is None:
+        item = await queue.get()
+
+        if item is None:
             break
 
-        table_name, features = batch
-        print(f"Writing {len(features)} rows to duckdb table {table_name}")
+        endpoint, features = item
 
-        json_str = json.dumps({"type": "FeatureCollection", "features": features})
+        if endpoint == "monitoring_locations":
+            buffer_ml.extend(monitoring_location_to_row(f) for f in features)
 
-        match table_name:
-            case "monitoring_locations":
-                await asyncio.to_thread(
-                    conn.execute,
-                    """
-                    INSERT OR IGNORE INTO "monitoring_locations"
-                    SELECT
-                        feature.properties.id::VARCHAR,
-                        feature.properties.agency_code::VARCHAR,
-                        feature.properties.agency_name::VARCHAR,
-                        feature.properties.monitoring_location_number::VARCHAR,
-                        feature.properties.monitoring_location_name::VARCHAR,
-                        feature.properties.district_code::VARCHAR,
-                        feature.properties.country_code::VARCHAR,
-                        feature.properties.country_name::VARCHAR,
-                        feature.properties.state_code::VARCHAR,
-                        feature.properties.state_name::VARCHAR,
-                        feature.properties.county_code::VARCHAR,
-                        feature.properties.county_name::VARCHAR,
-                        feature.properties.minor_civil_division_code::VARCHAR,
-                        feature.properties.site_type_code::VARCHAR,
-                        feature.properties.site_type::VARCHAR,
-                        feature.properties.hydrologic_unit_code::VARCHAR,
-                        feature.properties.basin_code::VARCHAR,
-                        feature.properties.altitude::DOUBLE,
-                        feature.properties.altitude_accuracy::DOUBLE,
-                        feature.properties.altitude_method_code::VARCHAR,
-                        feature.properties.altitude_method_name::VARCHAR,
-                        feature.properties.vertical_datum::VARCHAR,
-                        feature.properties.vertical_datum_name::VARCHAR,
-                        feature.properties.horizontal_positional_accuracy_code::VARCHAR,
-                        feature.properties.horizontal_positional_accuracy::VARCHAR,
-                        feature.properties.horizontal_position_method_code::VARCHAR,
-                        feature.properties.horizontal_position_method_name::VARCHAR,
-                        feature.properties.original_horizontal_datum::VARCHAR,
-                        feature.properties.original_horizontal_datum_name::VARCHAR,
-                        feature.properties.drainage_area::DOUBLE,
-                        feature.properties.contributing_drainage_area::DOUBLE,
-                        feature.properties.time_zone_abbreviation::VARCHAR,
-                        feature.properties.uses_daylight_savings::VARCHAR,
-                        feature.properties.construction_date::VARCHAR,
-                        feature.properties.aquifer_code::VARCHAR,
-                        feature.properties.national_aquifer_code::VARCHAR,
-                        feature.properties.aquifer_type_code::VARCHAR,
-                        feature.properties.well_constructed_depth::DOUBLE,
-                        feature.properties.hole_constructed_depth::DOUBLE,
-                        feature.properties.depth_source_code::VARCHAR,
-                        feature.properties.revision_note::VARCHAR,
-                        feature.properties.revision_created::TIMESTAMP,
-                        feature.properties.revision_modified::TIMESTAMP,
-                        CASE
-                            WHEN feature.geometry IS NULL THEN NULL
-                            ELSE feature.geometry::JSON
-                        END
-                    FROM read_json_auto(?) t,
-                    UNNEST(t.features) AS f(feature)
-                    """,
-                    [json_str],
-                )
-            case "time-series-metadata":
-                await asyncio.to_thread(
-                conn.execute,
-                    """
-                    INSERT OR IGNORE INTO "time_series_metadata"
-                    SELECT
-                        feature.properties.id::VARCHAR,
-                        feature.properties.unit_of_measure::VARCHAR,
-                        feature.properties.parameter_name::VARCHAR,
-                        feature.properties.parameter_code::VARCHAR,
-                        feature.properties.statistic_id::VARCHAR,
-                        feature.properties.hydrologic_unit_code::VARCHAR,
-                        feature.properties.state_name::VARCHAR,
-                        feature.properties.last_modified::TIMESTAMP,
-                        feature.properties.begin::TIMESTAMP,
-                        feature.properties.end::TIMESTAMP,
-                        feature.properties.begin_utc::TIMESTAMPTZ,
-                        feature.properties.end_utc::TIMESTAMPTZ,
-                        feature.properties.computation_period_identifier::VARCHAR,
-                        feature.properties.computation_identifier::VARCHAR,
-                        feature.properties.thresholds::JSON,
-                        feature.properties.sublocation_identifier::VARCHAR,
-                        feature.properties.primary::VARCHAR,
-                        feature.properties.monitoring_location_id::VARCHAR,
-                        feature.properties.web_description::VARCHAR,
-                        feature.properties.parameter_description::VARCHAR,
-                        feature.properties.parent_time_series_id::VARCHAR,
-                        CASE
-                            WHEN feature.geometry IS NULL THEN NULL
-                            ELSE feature.geometry::JSON
-                        END
-                    FROM read_json_auto(?) t,
-                    UNNEST(t.features) AS f(feature)
-                    """,
-                    [json_str],
-                )
-            case _:
-                raise ValueError(f"Unknown table name {table_name}")
+            if len(buffer_ml) >= BATCH_SIZE:
+                ml_writer.write(buffer_ml)
+                buffer_ml.clear()
 
-        print(f"Finished writing to {table_name}")
+        elif endpoint == "time_series_metadata":
+            buffer_ts.extend(timeseries_metadata_to_row(f) for f in features)
+
+            if len(buffer_ts) >= BATCH_SIZE:
+                ts_writer.write(buffer_ts)
+                buffer_ts.clear()
+        else:
+            raise ValueError(f"Unknown endpoint: {endpoint}")
+
         queue.task_done()
+
+    if buffer_ml:
+        ml_writer.write(buffer_ml)
+
+    if buffer_ts:
+        ts_writer.write(buffer_ts)
+
+    ml_writer.close()
+    ts_writer.close()
+    print("Completed writing parquet files")
+
+
+async def fetch_monitoring_locations(session, queue):
+    url = "https://api.waterdata.usgs.gov/ogcapi/v0/collections/monitoring-locations/items"
+    await fetch_all_pages_of_oaf_endpoint(session, queue, url, "monitoring_locations")
+
+
+async def fetch_timeseries(session, queue):
+    url = "https://api.waterdata.usgs.gov/ogcapi/v0/collections/time-series-metadata/items"
+    await fetch_all_pages_of_oaf_endpoint(session, queue, url, "time_series_metadata")
 
 
 async def main():
+    queue: asyncio.Queue[None | Tuple[str, list[dict]]] = asyncio.Queue()
 
-    USGS_API_KEY = os.environ.get("USGS_API_KEY")
-    assert USGS_API_KEY, (
-        "The USGS API key must be set in the USGS_API_KEY environment variable"
+    ml_writer = ParquetFeatureWriter(
+        "monitoring_locations.parquet",
+        monitoring_locations_schema(),
     )
 
-    # Use file DB for safety / spilling to disk
-    with duckdb.connect("usgs.duckdb") as conn:
-        make_monitoring_locations_table(conn)
-        make_timeseries_metadata_table(conn)
+    ts_writer = ParquetFeatureWriter(
+        "time_series_metadata.parquet",
+        timeseries_schema(),
+    )
 
-        conn.sql("SET preserve_insertion_order = false;")
+    async with aiohttp.ClientSession() as session:
+        producers = [
+            asyncio.create_task(fetch_monitoring_locations(session, queue)),
+            asyncio.create_task(fetch_timeseries(session, queue)),
+        ]
 
-        print("Finished creating tables in duckdb")
+        consumer = asyncio.create_task(
+            parquet_writer_worker(queue, ml_writer, ts_writer)
+        )
 
-        async with aiohttp.ClientSession(headers={"X-Api-Key": USGS_API_KEY}) as session:
-            queue = asyncio.Queue(maxsize=100)
+        await asyncio.gather(*producers)
 
-            writer_task = asyncio.create_task(writer(conn, queue))
+        await queue.put(None)
+        await consumer
 
-            try: 
-                await asyncio.gather(
-                    fetch_all_monitoring_locations(session, queue),
-                    fetch_all_timeseries_metadata(session, queue),
-                    return_exceptions=True,
-                )
-            finally:
-                await queue.put(None)
-            await writer_task
-            print("Done writing to duckdb tables")
 
 if __name__ == "__main__":
+    load_dotenv()
     asyncio.run(main())

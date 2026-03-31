@@ -5,6 +5,7 @@ import duckdb
 
 from lib import fetch_all_pages_of_oaf_endpoint
 
+
 def make_timeseries_metadata_table(conn: duckdb.DuckDBPyConnection):
     conn.execute("""
         CREATE TABLE IF NOT EXISTS "time_series_metadata" (
@@ -33,6 +34,9 @@ def make_timeseries_metadata_table(conn: duckdb.DuckDBPyConnection):
         );
     """)
 
-async def fetch_all_timeseries_metadata(session: aiohttp.ClientSession, queue: asyncio.Queue):
+
+async def fetch_all_timeseries_metadata(
+    session: aiohttp.ClientSession, queue: asyncio.Queue
+):
     url = "https://api.waterdata.usgs.gov/ogcapi/v0/collections/time-series-metadata/items"
     await fetch_all_pages_of_oaf_endpoint(session, queue, url, "time_series_metadata")

@@ -5,6 +5,7 @@ import duckdb
 
 from lib import fetch_all_pages_of_oaf_endpoint
 
+
 def template_feature_to_jsonld(feature: dict) -> dict:
     url = feature.get("")
 
@@ -68,6 +69,8 @@ def make_monitoring_locations_table(conn: duckdb.DuckDBPyConnection):
     """)
 
 
-async def fetch_all_monitoring_locations(session: aiohttp.ClientSession, queue: asyncio.Queue):
+async def fetch_all_monitoring_locations(
+    session: aiohttp.ClientSession, queue: asyncio.Queue
+):
     url = "https://api.waterdata.usgs.gov/ogcapi/v0/collections/monitoring-locations/items"
     await fetch_all_pages_of_oaf_endpoint(session, queue, url, "monitoring_locations")

@@ -1,2 +1,2 @@
-view:
-	duckdb usgs.duckdb --ui
+run:
+	uv run src/main.py
