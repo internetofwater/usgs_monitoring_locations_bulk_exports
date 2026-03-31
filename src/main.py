@@ -149,79 +149,48 @@ def join_and_write_parquet(
     output_parquet_path: str,
 ):
     con = duckdb.connect()
-
-    query = f"""
-    COPY (
-        WITH ml AS (
-            SELECT *
-            FROM read_parquet('{ml_parquet_path}')
-        ),
-        ts AS (
-            SELECT *
-            FROM read_parquet('{ts_parquet_path}')
-        )
-
-        SELECT
-            ml.*,
-
-            COALESCE(
-                list(
-                    struct_pack(
-                        unit_of_measure,
-                        parameter_name,
-                        parameter_code,
-                        statistic_id,
-                        last_modified,
-                        begin,
-                        "end",
-                        begin_utc,
-                        end_utc
-                    )
-                ),
-                []
-            ) AS timeseries_metadata
-
-        FROM ml
-        LEFT JOIN ts
-            ON ml.id = ts.monitoring_location_id
-
-        GROUP BY
-            ml.id,
-            ml.agency_code,
-            ml.agency_name,
-            ml.monitoring_location_number,
-            ml.monitoring_location_name,
-            ml.district_code,
-            ml.country_code,
-            ml.country_name,
-            ml.state_code,
-            ml.state_name,
-            ml.county_code,
-            ml.county_name,
-            ml.minor_civil_division_code,
-            ml.site_type_code,
-            ml.site_type,
-            ml.hydrologic_unit_code,
-            ml.basin_code,
-            ml.altitude,
-            ml.drainage_area,
-            ml.contributing_drainage_area,
-            ml.time_zone_abbreviation,
-            ml.uses_daylight_savings,
-            ml.construction_date,
-            ml.aquifer_code,
-            ml.national_aquifer_code,
-            ml.aquifer_type_code,
-            ml.well_constructed_depth,
-            ml.hole_constructed_depth,
-            ml.depth_source_code,
-            ml.revision_note,
-            ml.revision_created,
-            ml.revision_modified,
-            ml.geometry
+    print(
+        f"Joining parquet files {ml_parquet_path} and {ts_parquet_path} to {output_parquet_path}"
     )
-    TO '{output_parquet_path}'
-    (FORMAT PARQUET, COMPRESSION ZSTD);
+    query = f"""
+        COPY (
+            WITH ml AS (
+                SELECT *
+                FROM read_parquet('{ml_parquet_path}')
+            ),
+            ts AS (
+                SELECT *
+                FROM read_parquet('{ts_parquet_path}')
+            )
+
+            SELECT
+                ml.*,
+                ts_agg.timeseries_metadata
+            FROM ml
+            LEFT JOIN (
+                SELECT
+                    monitoring_location_id,
+                    list(
+                        struct_pack(
+                            id,
+                            unit_of_measure,
+                            parameter_name,
+                            parameter_code,
+                            statistic_id,
+                            last_modified,
+                            begin,
+                            "end",
+                            begin_utc,
+                            end_utc
+                        )
+                    ) AS timeseries_metadata
+                FROM ts
+                GROUP BY monitoring_location_id
+            ) ts_agg
+            ON ml.id = ts_agg.monitoring_location_id
+        )
+        TO '{output_parquet_path}'
+        (FORMAT PARQUET, COMPRESSION ZSTD);
     """
 
     con.execute(query)

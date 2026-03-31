@@ -1,8 +1,11 @@
 # Copyright 2026 Lincoln Institute of Land Policy
 # SPDX-License-Identifier: MIT
 
+import hashlib
 import inspect
 import json
+import os
+from pathlib import Path
 from typing import Callable, Literal, Optional, Tuple, TypedDict
 import aiohttp
 import asyncio
@@ -139,12 +142,24 @@ def template_feature_collection(response: OafResponse, template_fn: Callable) ->
     return concatenated_features
 
 
+def _cache_key(url: str, params: dict) -> str:
+    raw = url + "?" + "&".join(f"{k}={params[k]}" for k in sorted(params))
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()
+
+
+def _cache_path(cache_dir: str, key: str) -> Path:
+    return Path(cache_dir) / f"{key}.json"
+
+
 async def fetch_all_pages_of_oaf_endpoint(
     session: aiohttp.ClientSession,
     queue: asyncio.Queue,
     base_url: str,
     endpoint_name: str,
 ):
+    cache_dir = "/tmp/oaf_cache"
+    os.makedirs(cache_dir, exist_ok=True)
+
     current_page = 1
     MAX_USGS_LIMIT = 50000
     url = base_url
@@ -152,17 +167,33 @@ async def fetch_all_pages_of_oaf_endpoint(
     while True:
         params = {"limit": MAX_USGS_LIMIT, "f": "json"}
 
+        cache_key = _cache_key(url, params)
+        cache_file = _cache_path(cache_dir, cache_key)
+
         print(f"[{endpoint_name}] Fetching page {current_page}")
 
-        async with session.get(url, params=params) as response:
-            response.raise_for_status()
-            data = await response.json()
+        if cache_file.exists():
+            print(f"[{endpoint_name}] Cache hit -> {cache_file}")
+            with open(cache_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            async with session.get(url, params=params) as response:
+                response.raise_for_status()
+                data = await response.json()
 
-        features: dict = data.get("features")
+            # write cache
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+
+        features = data.get("features", [])
         await queue.put((endpoint_name, features))
 
         has_next, next_url = has_next_link(data)
-        break
+
+        TEST_MODE = os.environ.get("TEST_MODE")
+        if TEST_MODE:
+            break
+
         if not has_next or not next_url:
             break
 
