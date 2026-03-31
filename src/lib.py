@@ -6,7 +6,7 @@ import inspect
 import json
 import os
 from pathlib import Path
-from typing import Callable, Literal, Optional, Tuple, TypedDict
+from typing import Literal, Optional, Tuple, TypedDict
 import aiohttp
 import asyncio
 import pyarrow as pa
@@ -131,18 +131,6 @@ def has_next_link(response: OafResponse) -> Tuple[bool, str]:
         if link["rel"] == "next":
             return True, link["href"]
     return False, ""
-
-
-def template_feature_collection(response: OafResponse, template_fn: Callable) -> str:
-    templates: list[dict] = []
-    for feature in response["features"]:
-        templates.append(template_fn(feature))
-
-    concatenated_features = ""
-    for template in templates:
-        as_str = json.dumps(template)
-        concatenated_features += f"{as_str}\n"
-    return concatenated_features
 
 
 def _cache_key(url: str, params: dict) -> str:

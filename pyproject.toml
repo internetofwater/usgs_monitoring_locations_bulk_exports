@@ -13,7 +13,8 @@ dependencies = [
     "duckdb>=1.5.1",
     "geoarrow-pyarrow>=0.2.0",
     "shapely>=2.1.2",
-    "geoparquet-io==1.0.0b2"
+    "geoparquet-io==1.0.0b2",
+    "requests>=2.33.1",
 ]
 
 [dependency-groups]
