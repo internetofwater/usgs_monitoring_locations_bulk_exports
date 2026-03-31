@@ -4,6 +4,7 @@
 from typing import Final
 
 import pyarrow as pa
+from geoarrow import pyarrow as ga
 
 MONITORING_LOCATION_FIELDS_TO_TYPE: dict[str, pa.DataType] = {
     "id": pa.string(),
@@ -50,6 +51,7 @@ MONITORING_LOCATION_FIELDS_TO_TYPE: dict[str, pa.DataType] = {
     "revision_note": pa.string(),
     "revision_created": pa.string(),
     "revision_modified": pa.string(),
+    "geometry": ga.wkb(),
 }
 
 
@@ -63,6 +65,7 @@ def monitoring_locations_schema() -> pa.Schema:
 
 TIMESERIES_FIELDS: Final[list[str]] = [
     "id",
+    "monitoring_location_id",
     "unit_of_measure",
     "parameter_name",
     "parameter_code",

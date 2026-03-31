@@ -7,6 +7,7 @@ from typing import Any, Dict, Tuple, cast
 
 import aiohttp
 import shapely
+import duckdb
 
 from lib import (
     GeojsonFeature,
@@ -142,6 +143,91 @@ async def fetch_timeseries(session, queue):
     await fetch_all_pages_of_oaf_endpoint(session, queue, url, "time_series_metadata")
 
 
+def join_and_write_parquet(
+    ml_parquet_path: str,
+    ts_parquet_path: str,
+    output_parquet_path: str,
+):
+    con = duckdb.connect()
+
+    query = f"""
+    COPY (
+        WITH ml AS (
+            SELECT *
+            FROM read_parquet('{ml_parquet_path}')
+        ),
+        ts AS (
+            SELECT *
+            FROM read_parquet('{ts_parquet_path}')
+        )
+
+        SELECT
+            ml.*,
+
+            COALESCE(
+                list(
+                    struct_pack(
+                        unit_of_measure,
+                        parameter_name,
+                        parameter_code,
+                        statistic_id,
+                        last_modified,
+                        begin,
+                        "end",
+                        begin_utc,
+                        end_utc
+                    )
+                ),
+                []
+            ) AS timeseries_metadata
+
+        FROM ml
+        LEFT JOIN ts
+            ON ml.id = ts.monitoring_location_id
+
+        GROUP BY
+            ml.id,
+            ml.agency_code,
+            ml.agency_name,
+            ml.monitoring_location_number,
+            ml.monitoring_location_name,
+            ml.district_code,
+            ml.country_code,
+            ml.country_name,
+            ml.state_code,
+            ml.state_name,
+            ml.county_code,
+            ml.county_name,
+            ml.minor_civil_division_code,
+            ml.site_type_code,
+            ml.site_type,
+            ml.hydrologic_unit_code,
+            ml.basin_code,
+            ml.altitude,
+            ml.drainage_area,
+            ml.contributing_drainage_area,
+            ml.time_zone_abbreviation,
+            ml.uses_daylight_savings,
+            ml.construction_date,
+            ml.aquifer_code,
+            ml.national_aquifer_code,
+            ml.aquifer_type_code,
+            ml.well_constructed_depth,
+            ml.hole_constructed_depth,
+            ml.depth_source_code,
+            ml.revision_note,
+            ml.revision_created,
+            ml.revision_modified,
+            ml.geometry
+    )
+    TO '{output_parquet_path}'
+    (FORMAT PARQUET, COMPRESSION ZSTD);
+    """
+
+    con.execute(query)
+    con.close()
+
+
 async def main():
     queue: asyncio.Queue[None | Tuple[str, list[dict]]] = asyncio.Queue()
 
@@ -175,6 +261,12 @@ async def main():
 
         await queue.put(None)
         await consumer
+
+    join_and_write_parquet(
+        "monitoring_locations.parquet",
+        "time_series_metadata.parquet",
+        "joined.parquet",
+    )
 
 
 if __name__ == "__main__":

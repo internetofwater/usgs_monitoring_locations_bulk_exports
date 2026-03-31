@@ -73,7 +73,9 @@ class MonitoringLocationProperties(TypedDict):
 location_typed_dict_keys = inspect.get_annotations(MonitoringLocationProperties).keys()
 assert len(location_typed_dict_keys) >= len(MONITORING_LOCATION_FIELDS_TO_TYPE)
 for key in MONITORING_LOCATION_FIELDS_TO_TYPE:
-    assert key in location_typed_dict_keys, f"{key} missing in typed dict"
+    assert key in location_typed_dict_keys or key == "geometry", (
+        f"{key} missing in typed dict"
+    )
 
 
 class TimeSeriesMetadataProperties(TypedDict):
