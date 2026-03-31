@@ -1,3 +1,6 @@
+# Copyright 2026 Lincoln Institute of Land Policy
+# SPDX-License-Identifier: MIT
+
 import asyncio
 import os
 from typing import Any, Dict, Tuple, cast
@@ -155,7 +158,9 @@ async def main():
     if not USGS_API_KEY:
         print("WARNING: USGS_API_KEY not set in .env")
 
-    async with aiohttp.ClientSession(headers={"X-Api-Key": USGS_API_KEY or ""}) as session:
+    async with aiohttp.ClientSession(
+        headers={"X-Api-Key": USGS_API_KEY or ""}
+    ) as session:
         producers = [
             asyncio.create_task(fetch_monitoring_locations(session, queue)),
             asyncio.create_task(fetch_timeseries(session, queue)),

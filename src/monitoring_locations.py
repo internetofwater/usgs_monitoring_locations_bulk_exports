@@ -1,3 +1,6 @@
+# Copyright 2026 Lincoln Institute of Land Policy
+# SPDX-License-Identifier: MIT
+
 import asyncio
 
 import aiohttp
@@ -7,7 +10,7 @@ from lib import fetch_all_pages_of_oaf_endpoint
 
 
 def template_feature_to_jsonld(feature: dict) -> dict:
-    url = feature.get("")
+    _ = feature.get("")
 
     base_template = {
         "@context": {

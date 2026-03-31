@@ -1,3 +1,6 @@
+# Copyright 2026 Lincoln Institute of Land Policy
+# SPDX-License-Identifier: MIT
+
 import inspect
 import json
 from typing import Callable, Literal, Optional, Tuple, TypedDict
