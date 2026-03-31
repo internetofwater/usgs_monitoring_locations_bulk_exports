@@ -184,9 +184,13 @@ async def fetch_all_pages_of_oaf_endpoint(
                 response.raise_for_status()
                 data = await response.json()
 
-            # write cache
-            with open(cache_file, "w", encoding="utf-8") as f:
-                json.dump(data, f)
+            # write cache to disk for next time
+            # if running in github actions skip this
+            # since workers are ephemeral; in the future could use github actions cache
+            # but for production we may want to fetch fresh each time anyways
+            if not os.environ.get("GITHUB_ACTIONS"):
+                with open(cache_file, "w", encoding="utf-8") as f:
+                    json.dump(data, f)
 
         features = data.get("features", [])
         await queue.put((endpoint_name, features))
