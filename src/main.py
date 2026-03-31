@@ -20,6 +20,10 @@ from lib import (
 from schemas import monitoring_locations_schema, timeseries_schema
 from shapely.geometry import shape
 from dotenv import load_dotenv
+import logging
+
+logging.basicConfig(level=logging.INFO)
+LOGGER = logging.getLogger(__name__)
 
 
 def monitoring_location_to_row(
@@ -131,7 +135,7 @@ async def parquet_writer_worker(
 
     ml_writer.close()
     ts_writer.close()
-    print("Completed writing parquet files")
+    LOGGER.info("Completed writing parquet files")
 
 
 async def fetch_monitoring_locations(session, queue):
@@ -149,7 +153,7 @@ def join_and_write_parquet(
     timeseries_metadata_path: str,
     output_parquet_path: str,
 ):
-    print(
+    LOGGER.info(
         f"Joining locations and time series metadata and writing to {output_parquet_path}"
     )
     con = duckdb.connect()
@@ -216,7 +220,7 @@ async def main():
 
     USGS_API_KEY = os.environ.get("USGS_API_KEY")
     if not USGS_API_KEY:
-        print("WARNING: USGS_API_KEY not set in .env")
+        LOGGER.warning("USGS_API_KEY not set in .env; you may be rate limited")
 
     async with aiohttp.ClientSession(
         headers={"X-Api-Key": USGS_API_KEY or ""}
@@ -241,12 +245,12 @@ async def main():
         "time_series_metadata.parquet",
         output_parquet_path,
     )
-    print("Adding geoparquet metadata and sorting by hilbert curve")
+    LOGGER.info("Adding geoparquet metadata and sorting by hilbert curve")
     # add best practice metadata
     gpio.read(output_parquet_path).add_bbox().sort_hilbert().add_bbox_metadata().write(
         output_parquet_path, overwrite=True
     )
-    print("Done")
+    LOGGER.info("Done")
 
 
 if __name__ == "__main__":

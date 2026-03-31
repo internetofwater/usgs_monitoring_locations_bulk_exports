@@ -12,6 +12,9 @@ import asyncio
 import pyarrow as pa
 import pyarrow.parquet as pq
 from schemas import MONITORING_LOCATION_FIELDS_TO_TYPE, TIMESERIES_FIELDS
+import logging
+
+LOGGER = logging.getLogger(__name__)
 
 
 class MonitoringLocationProperties(TypedDict):
@@ -170,10 +173,10 @@ async def fetch_all_pages_of_oaf_endpoint(
         cache_key = _cache_key(url, params)
         cache_file = _cache_path(cache_dir, cache_key)
 
-        print(f"[{endpoint_name}] Fetching page {current_page}")
+        LOGGER.info(f"[{endpoint_name}] Fetching page {current_page}")
 
         if cache_file.exists():
-            print(f"[{endpoint_name}] Cache hit -> {cache_file}")
+            LOGGER.info(f"[{endpoint_name}] Cache hit -> {cache_file}")
             with open(cache_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
         else:
@@ -192,6 +195,7 @@ async def fetch_all_pages_of_oaf_endpoint(
 
         TEST_MODE = os.environ.get("TEST_MODE")
         if TEST_MODE:
+            LOGGER.warning("Fetching subset of data since env var TEST_MODE was set")
             break
 
         if not has_next or not next_url:
@@ -200,7 +204,7 @@ async def fetch_all_pages_of_oaf_endpoint(
         url = next_url
         current_page += 1
 
-    print(f"[{endpoint_name}] DONE\n\n")
+    LOGGER.info(f"[{endpoint_name}] Done fetching data")
 
 
 class ParquetFeatureWriter:

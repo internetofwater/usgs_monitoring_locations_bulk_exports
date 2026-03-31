@@ -1,3 +1,6 @@
+deps:
+	uv sync --all-extras
+
 run_test:
 	TEST_MODE=true uv run src/main.py
 
