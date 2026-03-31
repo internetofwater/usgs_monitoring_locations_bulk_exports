@@ -140,11 +140,11 @@ def get_parquet_file(file_location) -> Path:
         LOGGER.info("Found parquet file locally")
         return Path(file_location)
     else:
-        LOGGER.info("Downloading parquet file")
+        LOGGER.info(f"Downloading parquet file from {file_location}")
         with requests.get(file_location, stream=True) as response:
             response.raise_for_status()
 
-            download_path = Path("monitoring_locations.parquet")
+            download_path = Path(__file__).parent / "monitoring_locations.parquet"
             with open(download_path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=1024 * 1024):
                     if chunk:
