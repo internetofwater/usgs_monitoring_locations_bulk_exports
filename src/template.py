@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from pathlib import Path
+from typing import cast
 import requests
 import pyarrow.parquet as pq
 import argparse
@@ -48,35 +49,38 @@ def row_to_jsonld(row: dict) -> dict:
     # assert the geometry is a point
     assert isinstance(geometry_obj, shapely.Point)
 
+    id = cast(str, row.get("id"))
     place = {
         "@context": {
             "@vocab": "https://schema.org/",
             "schema": "https://schema.org/",
             "gsp": "http://www.opengis.net/ont/geosparql#",
             "hyf": "https://www.opengis.net/def/schema/hy_features/hyf/",
-            "dc": "http://purl.org/dc/terms/",
+            "locType": "https://api.waterdata.usgs.gov/ogcapi/v0/collections/site-types/items/",
         },
-        "@type": "schema:Place",
-        "@id": row.get("id"),
+        "@type": [
+            "schema:Place",
+            "hyf:HY_HydrometricFeature",
+            "hyf:HY_HydroLocation",
+            f"locType:{row.get('site_type_code')}",
+        ],
+        "@id": f"https://geoconnex.us/usgs/monitoring-location/{id.removeprefix('USGS-')}",
         "schema:name": row.get("monitoring_location_name"),
-        "hyf:HydroLocationType": row.get("site_type"),
         "schema:identifier": {
             "@type": "PropertyValue",
             "propertyID": "USGS site identifier",
             "value": row.get("monitoring_location_number"),
         },
-        "schema:url": f"https://api.waterdata.usgs.gov/ogcapi/v0/collections/monitoring-locations/items/{row.get('id')}",
+        "schema:url": f"https://api.waterdata.usgs.gov/ogcapi/v0/collections/monitoring-locations/items/{id}",
         "schema:provider": {
             "@type": "GovernmentOrganization",
             "name": row.get("agency_name"),
         },
-        # schema.org geometry (SHACL required)
         "schema:geo": {
             "@type": "GeoCoordinates",
             "schema:latitude": geometry_obj.y,
             "schema:longitude": geometry_obj.x,
         },
-        # GeoSPARQL geometry (SHACL required)
         "gsp:hasGeometry": {
             "@type": "http://www.opengis.net/ont/sf#Point",
             "gsp:asWKT": {"@type": "gsp:wktLiteral", "@value": geometry_obj.wkt},
