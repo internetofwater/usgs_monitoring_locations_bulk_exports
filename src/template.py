@@ -1,6 +1,7 @@
 # Copyright 2026 Lincoln Institute of Land Policy
 # SPDX-License-Identifier: MIT
 
+from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from typing import cast
 import requests
@@ -58,36 +59,36 @@ def row_to_jsonld(row: dict) -> dict:
     assert isinstance(geometry_obj, shapely.Point)
 
     id = cast(str, row.get("id"))
+    agency_name = clean(row.get("agency_name"))
     place = {
         "@context": {
             "@vocab": "https://schema.org/",
-            "schema": "https://schema.org/",
             "gsp": "http://www.opengis.net/ont/geosparql#",
             "hyf": "https://www.opengis.net/def/schema/hy_features/hyf/",
             "locType": "https://api.waterdata.usgs.gov/ogcapi/v0/collections/site-types/items/",
         },
         "@type": [
-            "schema:Place",
+            "Place",
             "hyf:HY_HydrometricFeature",
             "hyf:HY_HydroLocation",
             f"locType:{row.get('site_type_code')}",
         ],
-        "@id": f"https://geoconnex.us/usgs/monitoring-location/{id.removeprefix('USGS-')}",
-        "schema:name": row.get("monitoring_location_name"),
-        "schema:identifier": {
+        "@id": f"https://geoconnex.us/usgs/monitoring-location/{id}",
+        "name": row.get("monitoring_location_name"),
+        "identifier": {
             "@type": "PropertyValue",
             "propertyID": "USGS site identifier",
             "value": clean(row.get("monitoring_location_number")),
         },
-        "schema:url": f"https://api.waterdata.usgs.gov/ogcapi/v0/collections/monitoring-locations/items/{id}",
-        "schema:provider": {
+        "url": f"https://api.waterdata.usgs.gov/ogcapi/v0/collections/monitoring-locations/items/{id}",
+        "provider": {
             "@type": "GovernmentOrganization",
-            "name": clean(row.get("agency_name")),
+            "name": agency_name,
         },
-        "schema:geo": {
+        "geo": {
             "@type": "GeoCoordinates",
-            "schema:latitude": geometry_obj.y,
-            "schema:longitude": geometry_obj.x,
+            "latitude": geometry_obj.y,
+            "longitude": geometry_obj.x,
         },
         "gsp:hasGeometry": {
             "@type": "http://www.opengis.net/ont/sf#Point",
@@ -98,7 +99,7 @@ def row_to_jsonld(row: dict) -> dict:
     if timeseries is None or len(timeseries) == 0:
         return place
     else:
-        place["schema:subjectOf"] = []
+        place["subjectOf"] = []
 
     for ts in timeseries:
         parameter = ts["parameter_name"]
@@ -110,36 +111,36 @@ def row_to_jsonld(row: dict) -> dict:
         end_clean = strip_fractional_seconds(end)
 
         dataset = {
-            "@type": "schema:Dataset",
-            "schema:name": row.get("monitoring_location_number"),
-            "schema:description": f"{parameter} at {row['monitoring_location_name']}",
-            "schema:provider": {
+            "@type": "Dataset",
+            "name": row.get("monitoring_location_number"),
+            "description": f"{parameter} at {row['monitoring_location_name']}",
+            "provider": {
                 "@type": "GovernmentOrganization",
-                "name": clean(row.get("agency_name")),
+                "name": agency_name,
                 "url": "https://www.usgs.gov/",
             },
-            "schema:url": f"https://api.waterdata.usgs.gov/ogcapi/v0/collections/time-series-metadata/items/{ts['id']}",
-            "schema:variableMeasured": {
+            "url": f"https://api.waterdata.usgs.gov/ogcapi/v0/collections/time-series-metadata/items/{ts['id']}",
+            "variableMeasured": {
                 "@type": "PropertyValue",
-                "schema:name": parameter,
-                "schema:description": f"{parameter} in {unit}",
-                "schema:propertyID": str(code),
-                "schema:unitText": unit,
-                "schema:measurementTechnique": "observation",
-                "schema:measurementMethod": {
-                    "schema:name": f"{parameter} Measurements",
-                    "schema:publisher": clean(row.get("agency_name")),
+                "name": parameter,
+                "description": f"{parameter} in {unit}",
+                "propertyID": str(code),
+                "unitText": unit,
+                "measurementTechnique": "observation",
+                "measurementMethod": {
+                    "name": f"{parameter} Measurements",
+                    "publisher": agency_name,
                 },
             },
         }
         if begin_clean and end_clean:
-            dataset["schema:temporalCoverage"] = f"{begin_clean}/{end_clean}"
+            dataset["temporalCoverage"] = f"{begin_clean}/{end_clean}"
         elif begin_clean:
-            dataset["schema:temporalCoverage"] = f"{begin_clean}/.."
+            dataset["temporalCoverage"] = f"{begin_clean}/.."
         elif end_clean:
-            dataset["schema:temporalCoverage"] = f"../{end_clean}"
+            dataset["temporalCoverage"] = f"../{end_clean}"
 
-        place["schema:subjectOf"].append(dataset)
+        place["subjectOf"].append(dataset)
 
     # remove nulls (SHACL cleanliness)
     place = {k: v for k, v in place.items() if v is not None}
@@ -164,26 +165,31 @@ def get_parquet_file(file_location) -> Path:
         return download_path
 
 
+def process_row(row: dict) -> str:
+    try:
+        jsonld = row_to_jsonld(row)
+        return json.dumps(jsonld, allow_nan=False)
+    except ValueError as e:
+        raise ValueError(f"Failed to serialize jsonld from row: {row}") from e
+
+
 def main(file_location):
     parquet_file = get_parquet_file(file_location)
     pf = pq.ParquetFile(parquet_file)
 
-    batch_size = 5000
+    batch_size = 50000
 
-    for batch in pf.iter_batches(batch_size=batch_size):
-        df = batch.to_pandas()
-        LOGGER.info(f"Processing chunk with {len(df)} rows")
+    # Use most cores, but leave 1 free
+    num_workers = max(cpu_count() - 1, 1)
 
-        jsonld_records: list[str] = []
+    with Pool(processes=num_workers) as pool:
+        for batch in pf.iter_batches(batch_size=batch_size):
+            rows = batch.to_pylist()
 
-        for _, row in df.iterrows():
-            jsonld = row_to_jsonld(row.to_dict())
-            try:
-                jsonld_records.append(json.dumps(jsonld, allow_nan=False))
-            except ValueError as e:
-                raise ValueError(f"Failed to serialize jsonld {jsonld}") from e
+            # Parallel map
+            jsonld_records = pool.map(process_row, rows, chunksize=1000)
 
-        print("\n".join(jsonld_records))
+            print("\n".join(jsonld_records))
 
 
 if __name__ == "__main__":
