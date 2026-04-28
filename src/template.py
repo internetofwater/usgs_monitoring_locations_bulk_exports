@@ -110,6 +110,15 @@ def row_to_jsonld(row: dict) -> dict:
         begin_clean = strip_fractional_seconds(begin)
         end_clean = strip_fractional_seconds(end)
 
+        # Points is continuous, Daily is daily
+        match ts["computation_period_identifier"]:
+            case "Points":
+                usgs_collection_name = "continuous"
+            case "Daily":
+                usgs_collection_name = "daily"
+            case _:
+                usgs_collection_name = None
+
         dataset = {
             "@type": "Dataset",
             "name": row.get("monitoring_location_number"),
@@ -134,11 +143,46 @@ def row_to_jsonld(row: dict) -> dict:
             },
         }
         if begin_clean and end_clean:
-            dataset["temporalCoverage"] = f"{begin_clean}/{end_clean}"
+            temporalCoverage = f"{begin_clean}/{end_clean}"
+            dataset["temporalCoverage"] = temporalCoverage
         elif begin_clean:
-            dataset["temporalCoverage"] = f"{begin_clean}/.."
+            temporalCoverage = f"{begin_clean}/.."
+            dataset["temporalCoverage"] = temporalCoverage
         elif end_clean:
-            dataset["temporalCoverage"] = f"../{end_clean}"
+            temporalCoverage = f"../{end_clean}"
+            dataset["temporalCoverage"] = temporalCoverage
+        else:
+            temporalCoverage = None
+
+        if usgs_collection_name:
+            base_distrib_url = f"https://api.waterdata.usgs.gov/ogcapi/v0/collections/{usgs_collection_name}/items?monitoring_location_id={id}&parameter_code={code}"
+            if temporalCoverage:
+                base_distrib_url += f"&time={temporalCoverage}"
+            # only add a distribution link if
+            # there is a corresponding USGS collection for it
+            distribution = (
+                [
+                    {
+                        "@type": "DataDownload",
+                        "name": f"USGS Continuous Values for {parameter} at location {id} as CSV",
+                        "contentUrl": f"{base_distrib_url}&f=csv",
+                        "encodingFormat": ["text/comma-separated-values"],
+                    },
+                    {
+                        "@type": "DataDownload",
+                        "name": f"USGS Daily Values for {parameter} at location {id} as JSON",
+                        "contentUrl": f"{base_distrib_url}&f=json",
+                        "encodingFormat": ["application/json"],
+                    },
+                    {
+                        "@type": "DataDownload",
+                        "name": f"USGS Daily Values for {parameter} at location {id} as HTML",
+                        "contentUrl": f"{base_distrib_url}&f=html",
+                        "encodingFormat": ["text/html"],
+                    },
+                ],
+            )
+            dataset["distribution"] = distribution
 
         place["subjectOf"].append(dataset)
 

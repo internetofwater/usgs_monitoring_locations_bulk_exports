@@ -189,7 +189,8 @@ def join_and_write_parquet(
                             begin,
                             "end",
                             begin_utc,
-                            end_utc
+                            end_utc,
+                            computation_period_identifier
                         )
                     ) AS timeseries_metadata
                 FROM ts

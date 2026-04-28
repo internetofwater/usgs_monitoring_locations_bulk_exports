@@ -13,3 +13,5 @@ wheels/
 *.wal
 *.parquet
 *.env
+
+test.json
