@@ -89,6 +89,7 @@ def timeseries_metadata_to_row(feature: Dict[str, Any]) -> dict[str, str]:
         "end": props["end"],
         "begin_utc": props["begin_utc"],
         "end_utc": props["end_utc"],
+        "computation_period_identifier": props["computation_period_identifier"],
     }
 
 
