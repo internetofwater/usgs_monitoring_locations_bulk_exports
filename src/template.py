@@ -157,8 +157,6 @@ def row_to_jsonld(row: dict) -> dict:
 
         if usgs_collection_name:
             base_distrib_url = f"https://api.waterdata.usgs.gov/ogcapi/v0/collections/{usgs_collection_name}/items?monitoring_location_id={id}&parameter_code={code}"
-            if temporalCoverage:
-                base_distrib_url += f"&time={temporalCoverage}"
             # only add a distribution link if
             # there is a corresponding USGS collection for it
             distribution = (
