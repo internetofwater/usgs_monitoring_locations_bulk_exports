@@ -164,9 +164,9 @@ def row_to_jsonld(row: dict) -> dict:
                     {
                         "@type": "DataDownload",
                         "name": "USGS Continuous Values Service",
-                        "description": f"USGS Continuous Values for {parameter} at location {id} as CSV",
-                        "contentUrl": f"{base_distrib_url}&f=csv",
-                        "encodingFormat": ["text/comma-separated-values"],
+                        "description": f"USGS Continuous Values for {parameter} at location {id} as JSON",
+                        "contentUrl": f"{base_distrib_url}&f=json",
+                        "encodingFormat": ["application/json"],
                     }
                 ],
             )
