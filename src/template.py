@@ -75,6 +75,7 @@ def row_to_jsonld(row: dict) -> dict:
         ],
         "@id": f"https://geoconnex.us/usgs/monitoring-location/{id}",
         "name": row.get("monitoring_location_name"),
+        "hyf:HydroLocationType": row.get("site_type"),
         "identifier": {
             "@type": "PropertyValue",
             "propertyID": "USGS site identifier",
@@ -156,30 +157,17 @@ def row_to_jsonld(row: dict) -> dict:
 
         if usgs_collection_name:
             base_distrib_url = f"https://api.waterdata.usgs.gov/ogcapi/v0/collections/{usgs_collection_name}/items?monitoring_location_id={id}&parameter_code={code}"
-            if temporalCoverage:
-                base_distrib_url += f"&time={temporalCoverage}"
             # only add a distribution link if
             # there is a corresponding USGS collection for it
             distribution = (
                 [
                     {
                         "@type": "DataDownload",
-                        "name": f"USGS Continuous Values for {parameter} at location {id} as CSV",
-                        "contentUrl": f"{base_distrib_url}&f=csv",
-                        "encodingFormat": ["text/comma-separated-values"],
-                    },
-                    {
-                        "@type": "DataDownload",
-                        "name": f"USGS Daily Values for {parameter} at location {id} as JSON",
+                        "name": "USGS Continuous Values Service",
+                        "description": f"USGS Continuous Values for {parameter} at location {id} as JSON",
                         "contentUrl": f"{base_distrib_url}&f=json",
                         "encodingFormat": ["application/json"],
-                    },
-                    {
-                        "@type": "DataDownload",
-                        "name": f"USGS Daily Values for {parameter} at location {id} as HTML",
-                        "contentUrl": f"{base_distrib_url}&f=html",
-                        "encodingFormat": ["text/html"],
-                    },
+                    }
                 ],
             )
             dataset["distribution"] = distribution
