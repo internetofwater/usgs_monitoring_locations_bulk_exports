@@ -112,13 +112,16 @@ def row_to_jsonld(row: dict) -> dict:
         end_clean = strip_fractional_seconds(end)
 
         # Points is continuous, Daily is daily
-        match ts["computation_period_identifier"]:
-            case "Points":
-                usgs_collection_name = "continuous"
-            case "Daily":
-                usgs_collection_name = "daily"
-            case _:
-                usgs_collection_name = None
+        # Since the USGS API does not provide a URL that would
+        # allow for downloading all the data in bulk directly without pagination
+        # we comment this out since it is no longer used
+        # match ts["computation_period_identifier"]:
+        #     case "Points":
+        #         _usgs_collection_name = "continuous"
+        #     case "Daily":
+        #         _usgs_collection_name = "daily"
+        #     case _:
+        #         _usgs_collection_name = None
 
         dataset = {
             "@type": "Dataset",
@@ -154,23 +157,6 @@ def row_to_jsonld(row: dict) -> dict:
             dataset["temporalCoverage"] = temporalCoverage
         else:
             temporalCoverage = None
-
-        if usgs_collection_name:
-            base_distrib_url = f"https://api.waterdata.usgs.gov/ogcapi/v0/collections/{usgs_collection_name}/items?monitoring_location_id={id}&parameter_code={code}"
-            # only add a distribution link if
-            # there is a corresponding USGS collection for it
-            distribution = (
-                [
-                    {
-                        "@type": "DataDownload",
-                        "name": "USGS Continuous Values Service",
-                        "description": f"USGS Continuous Values for {parameter} at location {id} as JSON",
-                        "contentUrl": f"{base_distrib_url}&f=json",
-                        "encodingFormat": ["application/json"],
-                    }
-                ],
-            )
-            dataset["distribution"] = distribution
 
         place["subjectOf"].append(dataset)
 
